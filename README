@@ -1,0 +1,95 @@
+// Copyright Arpasanu Emilia-Oana 321 CA 2023 (emilia.arpasanu@stud.acs.upb.ro)
+
+Tema 1 - Dataplane Router
+
+Programul reprezinta implementarea functionalitatii de dirijare a unui router.
+Acesta asteapta in mod continuu pachete de la dispozitivele din retea
+in vederea redirectionarii lor sau oferirii de raspunsuri emitatorilor.
+In plus, routerul poate lua decizia de a arunca pachetele, in cazul in care
+acestea sunt neconforme.
+
+Principalele tipuri de pachete cu care routerul interactioneaza sunt ARP, ICMP
+si IPv4, fiecare dintre acestea fiind speficice protocoalelor respectate la
+nivelul retea. Pentru fiecare pachet primit, routerul efectueaza verificari
+asupra antetelor ce descrie datele ce trebuiesc redirectionate si reactioneaza
+corespunzator:
+
+    * daca adresa MAC destinatie a pachetului nu desemneaza routerul sau adresa
+    de broadcast (pachetul ajunge la toate dispozitivele din retea, inclusiv
+    routerul), pachetul este aruncat; altfel:
+
+    * daca pachetul este de tip ARP:
+
+        - daca destinatarul final al pachetului nu este routerul, acesta este
+        dirijat catre urmatorul hop (daca acesta exista); urmatorul hop se
+        determina cautand adresa IP destinatie in cadrul tabelei de rutare,
+        aplicand algoritmul LPM ce determina prefixul de lungime maxima
+        a adresei; odata determinat prefixul, pachetul este dirijat catre
+        adresa MAC corespunzatoare prefixului, fiind actualizat antetul de
+        tip Ethernet inainte de transmisie, ce constine adresele hardware
+        sursa si destinatie;
+
+        - daca destinatarul final al pachetului receptionat este routerul,
+        se verifica ce tip de pachet ARP este primit:
+
+            ~ daca a fost primit un ARP reply, se memoreaza in tabela ARP
+            construita adresa IP si MAC sursa ale raspunsului primit; apoi,
+            se extrag din coada de pachete, acele pachetele pentru care se
+            cunoaste acum adresa MAC a urmatorului hop, se actualizeaza
+            antetul Ethernet ale acestora si se trimit mai departe; extragerea
+            din coada se opreste fie cand nu mai exista pachete in aceasta,
+            fie cand pentru pachetul curent care ar trebui extras nu se
+            cunoaste adresa MAC destinatie;
+
+            ~ daca pachetul primit a fost un ARP request, se ofera un raspuns
+            dispozitivului care l-a trimis, ce contine adresa MAC a routerului
+            drept sursa;
+        
+    * daca pachetul primit este de tip IPv4, se efectueaza urmatoarele verificari:
+
+        - checksum-ul prezent in antetul de tip IPv4 sa fie egal cu cel
+        calculat in momentul primirii; daca conditia nu este respectata,
+        pachetul este aruncat, intrucat checksum-ul incorect indica faptul
+        ca datele au fost corupte;
+
+        - TTL-ul pachetului sa fie cel putin 2 (semnificand numarul de
+        hop-uri (incluzand routerul) care mai poate fi parcurs pana la
+        destinatie); daca TTL-ul este 0 sau 1, inseamna ca pachetul
+        nu va putea ajunge la destinatie, caz in care pachetul este
+        aruncat si se trimite emitatorului un pachet de tip ICMP ce
+        semnaleaza eroarea; daca TTL-ul permite transmiterea pachetului
+        catre urmatoarele hop-uri, aceste se actualizeaza (este decrementat
+        deoarece routerul este considerat un hop traversat) si se recalculeaza
+        checksum-ul;
+
+        - exista o ruta catre destinatie (este identificat un urmator hop
+        in calea pachetului catre destinatarul specificat in antetul IP);
+        pentru a determina acest lucru, se va cauta in tabela de rutare
+        prefixul de lungime maxima existent al adresei IP destinatie;
+        corespondentul prefixului gasit din tabela va denumi urmatorul hop
+        care va primi pachetul (acum se cunoaste adresa sa IP); daca nu a putut
+        fi identificat nicun prefix, destinatia finala a pachetului nu va putea
+        primi pachetul, altfel ca se rapsunde emitatorului pachetului cu un pachet
+        de tip ICMP ce anunta eroarea produsa;
+
+        - daca pachetul primit reprezinta un "Echo request" de tip ICMP
+        (adresa IP destinatie coincide cu cea a routerului), se va raspunde
+        emitatorului cu un pachet ICMP de tip "Echo reply";
+
+        - daca pachetul poate fi trimis urmatorului hop, se cauta adresa MAC
+        corespunzatoare adresei IP a urmatorului hop in cadrul tabelei ARP:
+
+            ~ daca aceasta nu este gasita, pachetul primit este adaugat intr-o coada
+            in asteptarea aflarii adresei MAC destinatie si se trimite tuturor
+            dispozitivelor din retea un ARP request, la care se va raspunde cu un
+            ARP reply primit de la host-ul ce are adresa IP destinatie cautata;
+            cand routerul va primi ARP reply-ul de care are nevoie, se va adauga
+            o noua intrare corespunzatoare in tabela ARP si se vor trimte din coada
+            de asteptare pachetele carora li se cunoaste adresa MAC destinatie,
+            dupa actualizarea antetului Ethernet (adresele hardware sursa si
+            destinatie);
+
+            ~ daca aceasta este gasita, se actualizeaza antetul Ethernet al
+            pachetului si acesta este trimis urmatorului hop.
+
+Programul contine implementarea tuturor subpunctelor cerintei.
